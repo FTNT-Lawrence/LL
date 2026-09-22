@@ -89,3 +89,15 @@ tests/               # pytest
 - Global patterns like `gPatMon` exist on the appliance; this generator also ships local `pat*` definitions for portability.
 - JSON support is pragmatic (regex extraction), not a full JSON DOM parser inside FortiSIEM.
 - Always review generated `eventType` / severity mapping before production enablement.
+
+## Deploy to a public website (Render free)
+
+1. Push this repo to GitHub (already done for `FTNT-Lawrence/LL`).
+2. Go to [https://render.com](https://render.com) and sign in with GitHub.
+3. **New → Blueprint** (or **Web Service**), select `FTNT-Lawrence/LL`.
+4. Render reads `render.yaml` / `Dockerfile` and deploys on the free plan.
+5. After deploy finishes, open the `*.onrender.com` URL.
+
+Notes:
+- Free tier may sleep after idle; first request can be slow to wake.
+- Do not upload sensitive production logs to a public demo site.
