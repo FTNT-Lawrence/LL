@@ -1,0 +1,4 @@
+timestamp=2024-03-15T10:22:01Z src=10.0.0.15 dst=203.0.113.50 sport=54321 dport=443 proto=tcp action=allow user=alice bytes=4096
+timestamp=2024-03-15T10:22:05Z src=10.0.0.22 dst=198.51.100.8 sport=49812 dport=80 proto=tcp action=deny user=bob bytes=0
+timestamp=2024-03-15T10:22:09Z src=10.0.1.9 dst=203.0.113.10 sport=22001 dport=22 proto=tcp action=allow user=carol bytes=1024
+timestamp=2024-03-15T10:22:12Z src=192.168.4.2 dst=8.8.4.4 sport=33001 dport=53 proto=udp action=allow user=dave bytes=128

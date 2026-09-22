@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FortiSIEM Parser Generator</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">FS</div>
+        <div>
+          <h1>FortiSIEM Parser Generator</h1>
+          <p>Upload logs → map fields → download custom parser XML</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button type="button" class="icon-btn" id="themeToggle" title="Toggle theme" aria-label="Toggle theme">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <nav class="stepper" aria-label="Wizard steps">
+      <button type="button" class="step active" data-step="1" id="stepBtn1">
+        <span class="step-num">1</span>
+        <span class="step-label"><strong>Upload</strong><span>Paste or drop logs</span></span>
+      </button>
+      <button type="button" class="step" data-step="2" id="stepBtn2" disabled>
+        <span class="step-num">2</span>
+        <span class="step-label"><strong>Metadata</strong><span>Vendor &amp; parser</span></span>
+      </button>
+      <button type="button" class="step" data-step="3" id="stepBtn3" disabled>
+        <span class="step-num">3</span>
+        <span class="step-label"><strong>Map fields</strong><span>FortiSIEM attrs</span></span>
+      </button>
+      <button type="button" class="step" data-step="4" id="stepBtn4" disabled>
+        <span class="step-num">4</span>
+        <span class="step-label"><strong>Preview</strong><span>XML &amp; dry-run</span></span>
+      </button>
+    </nav>
+
+    <!-- Step 1: Upload -->
+    <section class="panel active" id="panel1">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Upload sample logs</h2>
+            <p>Drop a <code>.log</code> / <code>.txt</code> / <code>.csv</code> file, or paste multi-line samples below.</p>
+          </div>
+        </div>
+
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept=".log,.txt,.csv,.json,.tsv,text/*" />
+          <div class="dropzone-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M12 16V4M12 4l-4 4M12 4l4 4"/>
+              <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+            </svg>
+          </div>
+          <h3>Drag &amp; drop log file here</h3>
+          <p>or click to browse · max practical size ~2 MB for samples</p>
+        </div>
+        <div id="fileChip" hidden></div>
+
+        <div class="or-divider">or paste samples</div>
+
+        <textarea
+          class="log-input"
+          id="logText"
+          placeholder="Paste several representative log lines here…&#10;&#10;&lt;190&gt;91809: Jan 9 02:38:47.872: %SEC-6-IPACCESSLOGP: list testlog permitted tcp 192.168.20.33(3438) -&gt; 69.147.86.184(80), 1 packet"
+          spellcheck="false"
+        ></textarea>
+
+        <div class="sample-links">
+          <span style="color:var(--text-dim);font-size:0.78rem;align-self:center">Try a sample:</span>
+          <button type="button" data-sample="cisco">Cisco ACL syslog</button>
+          <button type="button" data-sample="kv">Firewall key=value</button>
+          <button type="button" data-sample="csv">CSV app log</button>
+        </div>
+
+        <div class="btn-row">
+          <button type="button" class="btn btn-primary" id="btnDetect">
+            Detect format &amp; continue
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 2: Metadata -->
+    <section class="panel" id="panel2">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Parser metadata</h2>
+            <p>These become Device Type + parser name in the generated XML.</p>
+          </div>
+          <div class="chip-row" id="formatChips" style="margin:0"></div>
+        </div>
+
+        <div class="form-grid">
+          <div class="field">
+            <label for="parserName">Parser name</label>
+            <input id="parserName" placeholder="CiscoIOSCustomParser" />
+          </div>
+          <div class="field">
+            <label for="vendor">Vendor</label>
+            <input id="vendor" placeholder="Cisco" value="Generic" />
+          </div>
+          <div class="field">
+            <label for="model">Product / Model</label>
+            <input id="model" placeholder="IOS" value="Device" />
+          </div>
+          <div class="field">
+            <label for="version">Version</label>
+            <input id="version" placeholder="ANY" value="ANY" />
+          </div>
+          <div class="field">
+            <label for="appVendor">App vendor (optional)</label>
+            <input id="appVendor" placeholder="Leave blank if N/A" />
+          </div>
+          <div class="field">
+            <label for="appModel">App model (optional)</label>
+            <input id="appModel" placeholder="Leave blank if N/A" />
+          </div>
+        </div>
+
+        <div class="btn-row spread">
+          <button type="button" class="btn btn-ghost" data-goto="1">Back</button>
+          <button type="button" class="btn btn-primary" id="btnToMap">Continue to field mapping</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 3: Mapping -->
+    <section class="panel" id="panel3">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Field mapping</h2>
+            <p>Map detected fields to FortiSIEM event attributes. Leave blank to skip.</p>
+          </div>
+          <div class="chip-row" id="formatChips2" style="margin:0"></div>
+        </div>
+
+        <div id="mappingEmpty" class="empty-state" hidden>
+          <div class="illus">?</div>
+          <p>No fields detected yet. Go back and provide sample logs.</p>
+        </div>
+
+        <div class="table-wrap" id="mappingWrap">
+          <table class="data" id="mappingTable">
+            <thead>
+              <tr>
+                <th>Detected field</th>
+                <th>Sample values</th>
+                <th>FortiSIEM attribute</th>
+              </tr>
+            </thead>
+            <tbody id="mappingBody"></tbody>
+          </table>
+        </div>
+
+        <div class="btn-row spread">
+          <button type="button" class="btn btn-ghost" data-goto="2">Back</button>
+          <button type="button" class="btn btn-primary" id="btnGenerate">
+            Generate parser XML
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 4: Preview -->
+    <section class="panel" id="panel4">
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Generated XML</h2>
+            <p>Well-formed FortiSIEM custom parser — preview, dry-run, then download.</p>
+          </div>
+          <div class="chip-row" id="resultChips" style="margin:0"></div>
+        </div>
+        <pre class="xml-preview" id="xmlPreview" aria-label="XML preview"></pre>
+        <div class="btn-row">
+          <button type="button" class="btn btn-secondary" id="btnCopy">Copy XML</button>
+          <button type="button" class="btn btn-primary" id="btnDownload">Download .xml</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Dry-run results</h2>
+            <p>Best-effort extraction using the same heuristics as the generator.</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data" id="dryTable">
+            <thead>
+              <tr>
+                <th style="width:36%">Sample line</th>
+                <th>Extracted attributes</th>
+              </tr>
+            </thead>
+            <tbody id="dryBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <div>
+            <h2>Notes &amp; custom attributes</h2>
+            <p>Suggested Event Attributes and import reminders.</p>
+          </div>
+        </div>
+        <ul class="notes-list" id="notesList"></ul>
+        <div class="btn-row spread" style="margin-top:16px">
+          <button type="button" class="btn btn-ghost" data-goto="3">Back to mapping</button>
+          <button type="button" class="btn btn-secondary" data-goto="1">Start over</button>
+        </div>
+      </div>
+    </section>
+
+    <p class="footer-note">
+      Rule-based generator · No LLM required · Import via Admin → Device Support → Parsers
+    </p>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+<190>91809: Jan 9 02:38:47.872: %SEC-6-IPACCESSLOGP: list testlog permitted tcp 192.168.20.33(3438) -> 69.147.86.184(80), 1 packet
+<186>91810: Jan 9 02:39:01.120: %SEC-6-IPACCESSLOGP: list testlog denied udp 10.1.1.5(53122) -> 8.8.8.8(53), 1 packet
+<190>91811: Jan 9 02:40:15.440: %SEC-6-IPACCESSLOGP: list dmz-in permitted tcp 172.16.0.10(443) -> 192.168.1.50(51234), 3 packets
+<189>91812: Jan 9 02:41:00.001: %SEC-6-IPACCESSLOGP: list outside denied tcp 203.0.113.9(4444) -> 10.0.0.5(22), 1 packet

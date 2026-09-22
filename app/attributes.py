@@ -1,0 +1,166 @@
+"""FortiSIEM common event attributes and field-name heuristics."""
+
+from __future__ import annotations
+
+# Common FortiSIEM event attributes shown in the mapping dropdown.
+COMMON_ATTRIBUTES: list[str] = [
+    "eventType",
+    "eventSeverity",
+    "deviceTime",
+    "srcIpAddr",
+    "destIpAddr",
+    "srcIpPort",
+    "destIpPort",
+    "hostName",
+    "user",
+    "ipProto",
+    "totPkts",
+    "msg",
+    "srcMACAddr",
+    "destMACAddr",
+    "srcIntfName",
+    "destIntfName",
+    "recvBytes",
+    "sentBytes",
+    "totBytes",
+    "action",
+    "status",
+    "appName",
+    "osName",
+    "fileName",
+    "url",
+    "httpMethod",
+    "httpStatusCode",
+    "domain",
+    "computer",
+    "procName",
+    "hashCode",
+    "rawEventMsg",
+]
+
+# Heuristic aliases: normalized field tokens → FortiSIEM attribute
+FIELD_ALIASES: dict[str, str] = {
+    "src": "srcIpAddr",
+    "srcip": "srcIpAddr",
+    "src_ip": "srcIpAddr",
+    "source": "srcIpAddr",
+    "sourceip": "srcIpAddr",
+    "source_ip": "srcIpAddr",
+    "srcaddr": "srcIpAddr",
+    "sip": "srcIpAddr",
+    "clientip": "srcIpAddr",
+    "client_ip": "srcIpAddr",
+    "dst": "destIpAddr",
+    "dstip": "destIpAddr",
+    "dst_ip": "destIpAddr",
+    "dest": "destIpAddr",
+    "destip": "destIpAddr",
+    "dest_ip": "destIpAddr",
+    "destination": "destIpAddr",
+    "destinationip": "destIpAddr",
+    "dstaddr": "destIpAddr",
+    "dip": "destIpAddr",
+    "serverip": "destIpAddr",
+    "sport": "srcIpPort",
+    "srcport": "srcIpPort",
+    "src_port": "srcIpPort",
+    "sourceport": "srcIpPort",
+    "source_port": "srcIpPort",
+    "dport": "destIpPort",
+    "dstport": "destIpPort",
+    "dst_port": "destIpPort",
+    "destport": "destIpPort",
+    "dest_port": "destIpPort",
+    "destinationport": "destIpPort",
+    "proto": "ipProto",
+    "protocol": "ipProto",
+    "ipproto": "ipProto",
+    "host": "hostName",
+    "hostname": "hostName",
+    "host_name": "hostName",
+    "device": "hostName",
+    "devicename": "hostName",
+    "username": "user",
+    "user_name": "user",
+    "userid": "user",
+    "account": "user",
+    "login": "user",
+    "severity": "eventSeverity",
+    "sev": "eventSeverity",
+    "level": "eventSeverity",
+    "pri": "eventSeverity",
+    "priority": "eventSeverity",
+    "time": "deviceTime",
+    "timestamp": "deviceTime",
+    "datetime": "deviceTime",
+    "date": "deviceTime",
+    "eventtime": "deviceTime",
+    "device_time": "deviceTime",
+    "event": "eventType",
+    "eventtype": "eventType",
+    "event_type": "eventType",
+    "type": "eventType",
+    "msgid": "eventType",
+    "msg_id": "eventType",
+    "messageid": "eventType",
+    "packets": "totPkts",
+    "pkts": "totPkts",
+    "totpkts": "totPkts",
+    "packetcount": "totPkts",
+    "message": "msg",
+    "msg": "msg",
+    "text": "msg",
+    "description": "msg",
+    "action": "action",
+    "act": "action",
+    "status": "status",
+    "srcmac": "srcMACAddr",
+    "src_mac": "srcMACAddr",
+    "dstmac": "destMACAddr",
+    "dst_mac": "destMACAddr",
+    "srciface": "srcIntfName",
+    "src_intf": "srcIntfName",
+    "dstiface": "destIntfName",
+    "dst_intf": "destIntfName",
+    "bytes": "totBytes",
+    "bytesin": "recvBytes",
+    "bytesout": "sentBytes",
+    "recvbytes": "recvBytes",
+    "sentbytes": "sentBytes",
+    "app": "appName",
+    "application": "appName",
+    "filename": "fileName",
+    "file": "fileName",
+    "url": "url",
+    "uri": "url",
+    "method": "httpMethod",
+    "httpmethod": "httpMethod",
+    "statuscode": "httpStatusCode",
+    "httpstatus": "httpStatusCode",
+    "domain": "domain",
+    "computer": "computer",
+    "process": "procName",
+    "proc": "procName",
+    "hash": "hashCode",
+}
+
+
+def suggest_attribute(field_name: str) -> str | None:
+    """Suggest a FortiSIEM attribute for a discovered field name."""
+    if not field_name:
+        return None
+    key = field_name.strip().lower().replace("-", "_").replace(" ", "_")
+    if key in FIELD_ALIASES:
+        return FIELD_ALIASES[key]
+    compact = key.replace("_", "")
+    if compact in FIELD_ALIASES:
+        return FIELD_ALIASES[compact]
+    # Exact match against common attributes (case-insensitive)
+    for attr in COMMON_ATTRIBUTES:
+        if attr.lower() == key or attr.lower() == compact:
+            return attr
+    return None
+
+
+def is_known_attribute(name: str) -> bool:
+    return name in COMMON_ATTRIBUTES
