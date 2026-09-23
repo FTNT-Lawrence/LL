@@ -54,3 +54,27 @@ def test_empty_input():
     result = detect_format("   \n  ")
     assert result.format == LogFormat.UNSTRUCTURED
     assert result.confidence == 0.0
+
+
+def test_detect_sangfor_hybrid_as_key_value():
+    """Syslog PRI + Sangfor NGAF key=value must be KEY_VALUE, not Cisco syslog."""
+    text = (SAMPLES / "sangfor_ngaf.log").read_text()
+    result = detect_format(text)
+    assert result.format == LogFormat.KEY_VALUE
+    assert result.confidence >= 0.9
+    names = {f.name for f in result.fields}
+    assert "fw_name" in names
+    assert "log_id" in names
+    assert "src_ip" in names
+    assert any("hybrid" in n.lower() or "key=value" in n.lower() for n in result.notes)
+    # Must not look like Cisco facility parsing
+    assert not any(f.name == "_evIdPrefix" for f in result.fields)
+
+
+def test_hybrid_without_cisco_not_syslog():
+    line = (
+        '<134>Oct 22 20:15:32 192.168.1.254 : log_id=02010101 '
+        'fw_name="NGAF-HQ" src_ip=10.1.1.1 dst_ip=8.8.8.8 action=allow'
+    )
+    result = detect_format(line)
+    assert result.format == LogFormat.KEY_VALUE

@@ -118,3 +118,64 @@ def test_api_generate(client=None):
     body = r2.json()
     assert "<eventParser" in body["xml"]
     assert body["dry_run"]
+
+
+def test_e2e_sangfor_hybrid_xml():
+    text = (SAMPLES / "sangfor_ngaf.log").read_text()
+    detection = detect_format(text)
+    assert detection.format == LogFormat.KEY_VALUE
+    meta = ParserMeta(
+        parser_name="Sangfor_Firewall",
+        vendor="Sangfor",
+        model="NGAF",
+    )
+    # Explicit mappings covering recognizer + common Sangfor fields
+    name_to_field = {f.name: f for f in detection.fields}
+    mapping_spec = [
+        ("log_id", "log_id"),
+        ("time", "deviceTime"),
+        ("fw_name", "hostName"),
+        ("vdom", "vdom"),
+        ("src_ip", "srcIpAddr"),
+        ("dst_ip", "destIpAddr"),
+        ("src_port", "srcIpPort"),
+        ("dst_port", "destIpPort"),
+        ("proto", "ipProto"),
+        ("action", "action"),
+        ("policy_id", "policy_id"),
+        ("session_id", "session_id"),
+        ("user", "user"),
+        ("msg", "msg"),
+    ]
+    mappings = []
+    for key, attr in mapping_spec:
+        f = name_to_field.get(key)
+        if not f:
+            continue
+        mappings.append(
+            FieldMapping(
+                field_name=f.name,
+                forti_attr=attr,
+                key=f.key or f.name,
+                sample_values=list(f.sample_values),
+            )
+        )
+    xml, custom = generate_parser_xml(meta, detection, mappings)
+    assert '<eventParser name="Sangfor_Firewall">' in xml
+    assert "<Vendor>Sangfor</Vendor>" in xml
+    assert "collectAndSetAttrByKeyValuePair" in xml
+    assert "attrKeyMap" in xml
+    # Recognizer must use distinctive Sangfor keys, not bare PRI / Cisco
+    import re as _re
+    m = _re.search(
+        r"<eventFormatRecognizer>\s*<pattern><!\[CDATA\[(.*?)\]\]></pattern>",
+        xml,
+        _re.S,
+    )
+    assert m, "missing eventFormatRecognizer"
+    recog = m.group(1)
+    assert "fw_name=" in recog or "log_id=" in recog
+    assert recog.strip() != r"<\d{1,3}>"
+    assert "%[A-Z0-9_]+" not in recog
+    assert "srcIpAddr" in xml and 'key="src_ip"' in xml
+    assert 'key="fw_name"' in xml

@@ -52,6 +52,22 @@ _KV_PAIR = re.compile(
 )
 _IP = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
 
+# Distinctive key=value keys that indicate structured firewall/NGFW logs
+# (Sangfor NGAF and similar) even when wrapped in a syslog PRI/header.
+_DISTINCTIVE_KV_KEYS = {
+    "log_id",
+    "fw_name",
+    "src_ip",
+    "dst_ip",
+    "dest_ip",
+    "src_port",
+    "dst_port",
+    "vdom",
+    "policy_id",
+    "policyid",
+    "session_id",
+}
+
 
 def _nonempty_lines(text: str, limit: int = 50) -> list[str]:
     lines = []
@@ -188,6 +204,40 @@ def _looks_like_header(cells: list[str]) -> bool:
     return alpha >= max(2, len(cells) // 2)
 
 
+def _kv_keys_in_line(line: str) -> list[str]:
+    """Return key names from key=value pairs in a line."""
+    return re.findall(
+        r'([A-Za-z_][\w.-]*)\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s,;|]+)',
+        line,
+    )
+
+
+def _has_syslog_header(line: str) -> bool:
+    return bool(_SYSLOG_PRI.search(line) or _SYSLOG_TIMESTAMP.search(line))
+
+
+def _is_hybrid_syslog_kv(lines: list[str]) -> bool:
+    """
+    True when logs look like syslog PRI/header + key=value body (e.g. Sangfor NGAF)
+    and do NOT contain Cisco %FAC-SEV-MSG. Prefer KEY_VALUE classification for these.
+    """
+    if not lines:
+        return False
+    if any(_SYSLOG_CISCO.search(l) for l in lines):
+        return False
+    hybrid_hits = 0
+    for line in lines:
+        if not _has_syslog_header(line):
+            continue
+        keys = _kv_keys_in_line(line)
+        if len(keys) < 2:
+            continue
+        keyset = {k.lower() for k in keys}
+        if keyset & _DISTINCTIVE_KV_KEYS or len(keys) >= 3:
+            hybrid_hits += 1
+    return hybrid_hits >= max(1, (len(lines) + 1) // 2)
+
+
 def detect_format(text: str) -> DetectionResult:
     """Detect log format and extract candidate fields with sample values."""
     from .attributes import suggest_attribute
@@ -217,8 +267,14 @@ def detect_format(text: str) -> DetectionResult:
     elif delim_fmt == LogFormat.CSV:
         scores[LogFormat.CSV] = delim_score
 
-    # Prefer syslog over KV when Cisco-like signatures present
-    if syslog_score >= 0.6 and any(_SYSLOG_CISCO.search(l) for l in lines):
+    # Prefer KEY_VALUE for syslog-header + key=value body (Sangfor NGAF, etc.)
+    # when there is no Cisco %FAC-SEV-MSG — do NOT default those to Cisco syslog.
+    hybrid_kv = _is_hybrid_syslog_kv(lines)
+    if hybrid_kv and kv_score >= 0.5:
+        scores[LogFormat.KEY_VALUE] = max(scores[LogFormat.KEY_VALUE], 0.98)
+        scores[LogFormat.SYSLOG] = min(scores[LogFormat.SYSLOG], 0.4)
+    # Prefer syslog over KV only when Cisco-like signatures present
+    elif syslog_score >= 0.6 and any(_SYSLOG_CISCO.search(l) for l in lines):
         scores[LogFormat.SYSLOG] = max(scores[LogFormat.SYSLOG], 0.95)
 
     best_fmt = max(scores, key=lambda k: scores[k])
@@ -238,7 +294,13 @@ def detect_format(text: str) -> DetectionResult:
         )
     elif best_fmt == LogFormat.KEY_VALUE:
         fields = _fields_from_kv(lines, suggest_attribute)
-        notes.append("Detected key=value structured logs.")
+        if hybrid_kv:
+            notes.append(
+                "Detected hybrid syslog header + key=value body "
+                "(prefer KEY_VALUE over Cisco syslog; no %FAC-SEV-MSG)."
+            )
+        else:
+            notes.append("Detected key=value structured logs.")
     elif best_fmt == LogFormat.SYSLOG:
         fields = _fields_from_syslog(lines, suggest_attribute)
         notes.append("Detected syslog-like messages (PRI / Cisco facility pattern).")

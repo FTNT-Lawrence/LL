@@ -142,6 +142,10 @@ FIELD_ALIASES: dict[str, str] = {
     "process": "procName",
     "proc": "procName",
     "hash": "hashCode",
+    "fw_name": "hostName",
+    "fwname": "hostName",
+    "devname": "hostName",
+    "device_name": "hostName",
 }
 
 

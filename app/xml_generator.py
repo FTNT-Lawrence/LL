@@ -150,22 +150,68 @@ def _format_recognizer(fmt: LogFormat, meta: ParserMeta, detection: DetectionRes
         # Prefer Cisco-style %FAC-SEV-MSG
         if any(re.search(r"%[A-Z0-9_]+-\d+-[A-Z0-9_]+", s) for s in samples):
             pattern = r"%[A-Z0-9_]+-\d+-[A-Z0-9_]+"
-        elif any(re.match(r"<\d{1,3}>", s) for s in samples):
-            pattern = r"<\d{1,3}>"
         else:
-            pattern = vendor or r"."
+            # Sangfor-like hybrid may be mis-routed here: never use only PRI.
+            body_keys = []
+            for s in samples:
+                body_keys.extend(re.findall(r"([A-Za-z_][\w.-]*)\s*=", s))
+            pref = None
+            for cand in ("fw_name", "log_id", "src_ip", "dst_ip"):
+                for k in body_keys:
+                    if k.lower() == cand:
+                        pref = k
+                        break
+                if pref:
+                    break
+            if pref:
+                pattern = re.escape(f"{pref}=")
+            elif any(re.match(r"<\d{1,3}>", s) for s in samples):
+                pattern = r"<\d{1,3}>"
+            else:
+                pattern = vendor or r"."
     elif fmt == LogFormat.KEY_VALUE:
-        # pick a distinctive key from samples
+        # Prefer distinctive vendor/firewall keys (Sangfor NGAF etc.) so the
+        # recognizer matches the body — never rely on only "<\\d{1,3}>" for these.
         keys = []
         for s in samples:
             keys.extend(re.findall(r"([A-Za-z_][\w.-]*)\s*=", s))
-        distinctive = None
+        # Preserve first-seen casing while matching by lower name
+        seen: dict[str, str] = {}
         for k in keys:
-            if k.lower() in ("src", "srcip", "dst", "dstip", "action", "type", "event"):
-                distinctive = k
+            seen.setdefault(k.lower(), k)
+        priority = (
+            "fw_name",
+            "log_id",
+            "policy_id",
+            "policyid",
+            "vdom",
+            "session_id",
+            "src_ip",
+            "dst_ip",
+            "dest_ip",
+            "srcip",
+            "dstip",
+            "src",
+            "dst",
+            "action",
+            "type",
+            "event",
+        )
+        distinctive = None
+        for pref in priority:
+            if pref in seen:
+                distinctive = seen[pref]
                 break
         if not distinctive and keys:
-            distinctive = keys[0]
+            # Prefer a vendor-named key if present
+            vendor_l = (meta.vendor or "").lower()
+            if vendor_l:
+                for k in keys:
+                    if vendor_l in k.lower():
+                        distinctive = k
+                        break
+            if not distinctive:
+                distinctive = keys[0]
         pattern = re.escape(f"{distinctive}=") if distinctive else (vendor or r"\w+=\w+")
     elif fmt == LogFormat.JSON:
         pattern = r"^\s*\{"
@@ -192,7 +238,7 @@ def _parsing_instructions(
     meta: ParserMeta,
 ) -> str:
     if fmt == LogFormat.KEY_VALUE:
-        body = _instr_key_value(mappings, meta)
+        body = _instr_key_value(mappings, meta, detection)
     elif fmt in (LogFormat.CSV, LogFormat.TSV):
         body = _instr_positional(mappings, detection, meta)
     elif fmt == LogFormat.JSON:
@@ -215,7 +261,11 @@ def _set_defaults(meta: ParserMeta, indent: str = "    ") -> list[str]:
     return lines
 
 
-def _instr_key_value(mappings: list[FieldMapping], meta: ParserMeta) -> str:
+def _instr_key_value(
+    mappings: list[FieldMapping],
+    meta: ParserMeta,
+    detection: DetectionResult | None = None,
+) -> str:
     lines = _set_defaults(meta)
     # Map attr -> key
     attrs = []
@@ -226,8 +276,34 @@ def _instr_key_value(mappings: list[FieldMapping], meta: ParserMeta) -> str:
             continue
         attrs.append((key, attr))
 
+    # Hybrid syslog + KV (Sangfor-style): keys appear in $_rawmsg, so KV on
+    # $_rawmsg is correct. Optionally peel header into $_body after ": ".
+    samples = list(detection.sample_lines) if detection else []
+    hybrid = any(
+        re.search(r"^<\d{1,3}>", s) and re.search(r"\w+=", s) for s in samples
+    )
+    kv_src = "$_rawmsg"
+    if hybrid and any(" : " in s for s in samples):
+        lines.append(
+            '    <!-- Hybrid syslog+KV: optional body after host ": " -->'
+        )
+        lines.append('    <collectFieldsByRegex src="$_rawmsg">')
+        body_hdr = (
+            r"(?:<\d{1,3}>)?"
+            r"(?:<_mon:patWord>\s+<_day:patInt>\s+<_time:patWord>\s+)?"
+            r"(?:<_host:patWord>\s+:\s+)?"
+            r"<_body:patMesgBody>"
+        )
+        lines.append(f"      <regex>{_cdata(body_hdr)}</regex>")
+        lines.append("    </collectFieldsByRegex>")
+        # Still parse KV from raw — keys are present there and more reliable
+        # if header regex does not match every variant.
+        kv_src = "$_rawmsg"
+
     if attrs:
-        lines.append('    <collectAndSetAttrByKeyValuePair sep="\\s+" kvsep="=" src="$_rawmsg">')
+        lines.append(
+            f'    <collectAndSetAttrByKeyValuePair sep="\\s+" kvsep="=" src="{kv_src}">'
+        )
         for key, attr in attrs:
             # FortiSIEM uses attr name as XML attribute holding the key to match
             lines.append(f'      <attrKeyMap attr="{_xml_attr(attr)}" key="{_xml_attr(key)}"/>')
